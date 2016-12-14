@@ -370,6 +370,13 @@ void GazeboRosCameraUtils::LoadThread()
   this->cameraUpdateRateSubscriber_ = this->rosnode_->subscribe(rate_so);
   */
 
+  ros::SubscribeOptions camera_info_so =
+      ros::SubscribeOptions::create<sensor_msgs::CameraInfo>(
+          "set_camera_info", 1,
+          boost::bind(&GazeboRosCameraUtils::SetCameraInfo, this, _1),
+          ros::VoidPtr(), &this->camera_queue_);
+    this->cameraInfoSubscriber_ = this->rosnode_->subscribe(camera_info_so);
+
   if (this->CanTriggerCamera())
   {
     ros::SubscribeOptions trigger_so =
@@ -411,6 +418,94 @@ void GazeboRosCameraUtils::SetUpdateRate(
   const std_msgs::Float64::ConstPtr& update_rate)
 {
   this->parentSensor_->SetUpdateRate(update_rate->data);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Set Update Rate
+void GazeboRosCameraUtils::SetCameraInfo(
+  const sensor_msgs::CameraInfo::ConstPtr& camera_info)
+{
+  this->focal_length_x_ = camera_info->K[0];
+  this->focal_length_y_ = camera_info->K[4];
+  this->cx_prime_ = this->cx_ = camera_info->K[2];
+  this->cy_ = camera_info->K[5];
+  this->distortion_k1_ = camera_info->D[0];
+  this->distortion_k2_ = camera_info->D[1];
+  this->distortion_t1_ = camera_info->D[2];
+  this->distortion_t2_ = camera_info->D[3];
+  this->distortion_k3_ = camera_info->D[4];
+  this->camera_->UpdateCameraIntrinsics(camera_info->K[0], camera_info->K[4],
+                                        camera_info->K[2], camera_info->K[5], camera_info->K[1]);
+
+  sensor_msgs::CameraInfo camera_info_msg;
+  FillCameraInfo(camera_info_msg);
+  this->camera_info_manager_->setCameraInfo(camera_info_msg);
+
+  ROS_WARN("Updated camera info");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void GazeboRosCameraUtils::FillCameraInfo(sensor_msgs::CameraInfo & camera_info_msg)
+{
+  camera_info_msg.header.frame_id = this->frame_name_;
+
+  camera_info_msg.height = this->height_;
+  camera_info_msg.width  = this->width_;
+  // distortion
+#if ROS_VERSION_MINIMUM(1, 3, 0)
+  camera_info_msg.distortion_model = "plumb_bob";
+  camera_info_msg.D.resize(5);
+#endif
+  // Allow the user to disable automatic cropping (used to remove barrel
+  // distortion black border. The crop can be useful, but also skewes
+  // the lens distortion, making the supplied k and t values incorrect.
+  if(this->camera_->LensDistortion())
+  {
+    this->camera_->LensDistortion()->SetCrop(this->border_crop_);
+  }
+
+  // D = {k1, k2, t1, t2, k3}, as specified in:
+  // - sensor_msgs/CameraInfo: http://docs.ros.org/api/sensor_msgs/html/msg/CameraInfo.html
+  // - OpenCV: http://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html
+  camera_info_msg.D[0] = this->distortion_k1_;
+  camera_info_msg.D[1] = this->distortion_k2_;
+  camera_info_msg.D[2] = this->distortion_t1_;
+  camera_info_msg.D[3] = this->distortion_t2_;
+  camera_info_msg.D[4] = this->distortion_k3_;
+  // original camera_ matrix
+  camera_info_msg.K[0] = this->focal_length_x_;
+  camera_info_msg.K[1] = 0.0;
+  camera_info_msg.K[2] = this->cx_;
+  camera_info_msg.K[3] = 0.0;
+  camera_info_msg.K[4] = this->focal_length_y_;
+  camera_info_msg.K[5] = this->cy_;
+  camera_info_msg.K[6] = 0.0;
+  camera_info_msg.K[7] = 0.0;
+  camera_info_msg.K[8] = 1.0;
+  // rectification
+  camera_info_msg.R[0] = 1.0;
+  camera_info_msg.R[1] = 0.0;
+  camera_info_msg.R[2] = 0.0;
+  camera_info_msg.R[3] = 0.0;
+  camera_info_msg.R[4] = 1.0;
+  camera_info_msg.R[5] = 0.0;
+  camera_info_msg.R[6] = 0.0;
+  camera_info_msg.R[7] = 0.0;
+  camera_info_msg.R[8] = 1.0;
+  // camera_ projection matrix (same as camera_ matrix due
+  // to lack of distortion/rectification) (is this generated?)
+  camera_info_msg.P[0] = this->focal_length_x_;
+  camera_info_msg.P[1] = 0.0;
+  camera_info_msg.P[2] = this->cx_;
+  camera_info_msg.P[3] = -this->focal_length_x_ * this->hack_baseline_;
+  camera_info_msg.P[4] = 0.0;
+  camera_info_msg.P[5] = this->focal_length_y_;
+  camera_info_msg.P[6] = this->cy_;
+  camera_info_msg.P[7] = 0.0;
+  camera_info_msg.P[8] = 0.0;
+  camera_info_msg.P[9] = 0.0;
+  camera_info_msg.P[10] = 1.0;
+  camera_info_msg.P[11] = 0.0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -549,67 +644,7 @@ void GazeboRosCameraUtils::Init()
 
   // fill CameraInfo
   sensor_msgs::CameraInfo camera_info_msg;
-
-  camera_info_msg.header.frame_id = this->frame_name_;
-
-  camera_info_msg.height = this->height_;
-  camera_info_msg.width  = this->width_;
-  // distortion
-#if ROS_VERSION_MINIMUM(1, 3, 0)
-  camera_info_msg.distortion_model = "plumb_bob";
-  camera_info_msg.D.resize(5);
-#endif
-  // Allow the user to disable automatic cropping (used to remove barrel
-  // distortion black border. The crop can be useful, but also skewes
-  // the lens distortion, making the supplied k and t values incorrect.
-  if(this->camera_->LensDistortion())
-  {
-    this->camera_->LensDistortion()->SetCrop(this->border_crop_);
-  }
-
-  // D = {k1, k2, t1, t2, k3}, as specified in:
-  // - sensor_msgs/CameraInfo: http://docs.ros.org/api/sensor_msgs/html/msg/CameraInfo.html
-  // - OpenCV: http://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html
-  camera_info_msg.D[0] = this->distortion_k1_;
-  camera_info_msg.D[1] = this->distortion_k2_;
-  camera_info_msg.D[2] = this->distortion_t1_;
-  camera_info_msg.D[3] = this->distortion_t2_;
-  camera_info_msg.D[4] = this->distortion_k3_;
-  // original camera_ matrix
-  camera_info_msg.K[0] = this->focal_length_x_;
-  camera_info_msg.K[1] = 0.0;
-  camera_info_msg.K[2] = this->cx_;
-  camera_info_msg.K[3] = 0.0;
-  camera_info_msg.K[4] = this->focal_length_y_;
-  camera_info_msg.K[5] = this->cy_;
-  camera_info_msg.K[6] = 0.0;
-  camera_info_msg.K[7] = 0.0;
-  camera_info_msg.K[8] = 1.0;
-  // rectification
-  camera_info_msg.R[0] = 1.0;
-  camera_info_msg.R[1] = 0.0;
-  camera_info_msg.R[2] = 0.0;
-  camera_info_msg.R[3] = 0.0;
-  camera_info_msg.R[4] = 1.0;
-  camera_info_msg.R[5] = 0.0;
-  camera_info_msg.R[6] = 0.0;
-  camera_info_msg.R[7] = 0.0;
-  camera_info_msg.R[8] = 1.0;
-  // camera_ projection matrix (same as camera_ matrix due
-  // to lack of distortion/rectification) (is this generated?)
-  camera_info_msg.P[0] = this->focal_length_x_;
-  camera_info_msg.P[1] = 0.0;
-  camera_info_msg.P[2] = this->cx_;
-  camera_info_msg.P[3] = -this->focal_length_x_ * this->hack_baseline_;
-  camera_info_msg.P[4] = 0.0;
-  camera_info_msg.P[5] = this->focal_length_y_;
-  camera_info_msg.P[6] = this->cy_;
-  camera_info_msg.P[7] = 0.0;
-  camera_info_msg.P[8] = 0.0;
-  camera_info_msg.P[9] = 0.0;
-  camera_info_msg.P[10] = 1.0;
-  camera_info_msg.P[11] = 0.0;
-
+  FillCameraInfo(camera_info_msg);
   this->camera_info_manager_->setCameraInfo(camera_info_msg);
 
   // start custom queue for camera_

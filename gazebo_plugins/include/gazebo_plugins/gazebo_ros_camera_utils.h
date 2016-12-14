@@ -104,6 +104,8 @@ namespace gazebo
     /// \brief: Camera modification functions
     private: void SetHFOV(const std_msgs::Float64::ConstPtr& hfov);
     private: void SetUpdateRate(const std_msgs::Float64::ConstPtr& update_rate);
+    private: void SetCameraInfo(const sensor_msgs::CameraInfo::ConstPtr& camera_info);
+    private: void FillCameraInfo(sensor_msgs::CameraInfo & camera_info_msg);
 
     /// \brief A pointer to the ROS node.
     ///  A node will be instantiated if it does not exist.
@@ -173,6 +175,7 @@ namespace gazebo
 
     private: ros::Subscriber cameraHFOVSubscriber_;
     private: ros::Subscriber cameraUpdateRateSubscriber_;
+    private: ros::Subscriber cameraInfoSubscriber_;
 
     // Time last published, refrain from publish unless new image has
     // been rendered
