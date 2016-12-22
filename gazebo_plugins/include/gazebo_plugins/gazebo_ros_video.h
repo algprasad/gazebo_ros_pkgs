@@ -25,6 +25,7 @@
 #define GAZEBO_ROS_VIDEO_H
 
 #include <boost/thread/mutex.hpp>
+#include <boost/smart_ptr/shared_ptr.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <opencv2/opencv.hpp>
@@ -32,6 +33,7 @@
 #include <ros/callback_queue.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
+#include <std_msgs/String.h>
 
 #include <gazebo/common/Events.hh>
 #include <gazebo/common/Plugin.hh>
@@ -50,6 +52,9 @@ namespace gazebo
           int height, int width);
       virtual ~VideoVisual();
       void render(const cv::Mat& image);
+      void clearImage();
+      inline int getWidth() { return width_; }
+      inline int getHeight() { return height_; }
     private:
       Ogre::TexturePtr texture_;
       int height_;
@@ -65,6 +70,7 @@ namespace gazebo
 
       void Load(rendering::VisualPtr parent, sdf::ElementPtr sdf);
       void processImage(const sensor_msgs::ImageConstPtr &msg);
+      void processImagePath(const std_msgs::StringConstPtr &msg);
 
     protected:
 
@@ -84,8 +90,10 @@ namespace gazebo
       // ROS Stuff
       boost::shared_ptr<ros::NodeHandle> rosnode_;
       ros::Subscriber camera_subscriber_;
+      ros::Subscriber image_path_subscriber_;
       std::string robot_namespace_;
       std::string topic_name_;
+      std::string topic_name_image_path_;
 
       ros::CallbackQueue queue_;
       boost::thread callback_queue_thread_;

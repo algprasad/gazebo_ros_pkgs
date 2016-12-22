@@ -110,6 +110,20 @@ namespace gazebo
     pixelBuffer->unlock();
   }
 
+  void VideoVisual::clearImage()
+  {
+    Ogre::HardwarePixelBufferSharedPtr pixelBuffer =
+      this->texture_->getBuffer();
+
+    pixelBuffer->lock(Ogre::HardwareBuffer::HBL_DISCARD);
+    const Ogre::PixelBox& pixelBox = pixelBuffer->getCurrentLock();
+    uint8_t* pDest = static_cast<uint8_t*>(pixelBox.data);
+
+    memset(pDest, 0, height_ * width_ * 4);
+
+    pixelBuffer->unlock();
+  }
+
   // Constructor
   GazeboRosVideo::GazeboRosVideo() {}
 
@@ -146,6 +160,17 @@ namespace gazebo
       topic_name_ = sdf->GetElement("topicName")->Get<std::string>();
     }
 
+    topic_name_image_path_ = "set_image_path";
+    if (!sdf->HasElement("topicImagePath"))
+    {
+      ROS_WARN("GazeboRosVideo Plugin (ns = %s) missing <topicImagePath>, "
+          "defaults to \"%s\".", robot_namespace_.c_str(), topic_name_image_path_.c_str());
+    }
+    else
+    {
+      topic_name_image_path_ = sdf->GetElement("topicImagePath")->Get<std::string>();
+    }
+
     int height = 240;
     if (!sdf->HasElement("height")) {
       ROS_WARN("GazeboRosVideo Plugin (ns = %s) missing <height>, "
@@ -170,6 +195,8 @@ namespace gazebo
     video_visual_.reset(
         new VideoVisual(name, parent, height, width));
 
+    video_visual_->clearImage();
+
     // Initialize the ROS node for the gazebo client if necessary
     if (!ros::isInitialized()) 
     {
@@ -189,6 +216,15 @@ namespace gazebo
           ros::VoidPtr(), &queue_);
     camera_subscriber_ = 
       rosnode_->subscribe(so);
+
+    // Subscribe to the string topic
+    ros::SubscribeOptions so_image_path =
+      ros::SubscribeOptions::create<std_msgs::String>(topic_name_image_path_, 1,
+          boost::bind(&GazeboRosVideo::processImagePath, this, _1),
+          ros::VoidPtr(), &queue_);
+    image_path_subscriber_ =
+      rosnode_->subscribe(so_image_path);
+
     ROS_INFO("GazeboRosVideo (%s, ns = %s) has started!", 
         gazebo_source.c_str(), robot_namespace_.c_str());
     new_image_available_ = false;
@@ -218,6 +254,22 @@ namespace gazebo
     boost::mutex::scoped_lock scoped_lock(m_image_);
     // We get image with alpha channel as it allows memcpy onto ogre texture
     image_ = cv_bridge::toCvCopy(msg, "bgra8");
+    new_image_available_ = true;
+  }
+
+  void GazeboRosVideo::processImagePath(const std_msgs::StringConstPtr &msg)
+  {
+    boost::mutex::scoped_lock scoped_lock(m_image_);
+    image_ = boost::make_shared<cv_bridge::CvImage>();
+    cv::Mat image = cv::imread(msg->data, CV_LOAD_IMAGE_COLOR);
+    if (image.data)
+    {
+      cv::cvtColor(image, image_->image, CV_BGR2BGRA, 4);
+    }
+    else
+    {
+      image_->image = cv::Mat::zeros(video_visual_->getHeight(), video_visual_->getWidth(), CV_8UC4);
+    }
     new_image_available_ = true;
   }
 
