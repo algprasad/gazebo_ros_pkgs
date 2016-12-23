@@ -24,6 +24,8 @@
 #ifndef GAZEBO_ROS_VIDEO_H
 #define GAZEBO_ROS_VIDEO_H
 
+#include <string>
+
 #include <boost/thread/mutex.hpp>
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <cv_bridge/cv_bridge.h>
@@ -32,6 +34,7 @@
 #include <ros/advertise_options.h>
 #include <ros/callback_queue.h>
 #include <ros/ros.h>
+#include <ros/rate.h>
 #include <sensor_msgs/Image.h>
 #include <std_msgs/String.h>
 
@@ -71,6 +74,9 @@ namespace gazebo
       void Load(rendering::VisualPtr parent, sdf::ElementPtr sdf);
       void processImage(const sensor_msgs::ImageConstPtr &msg);
       void processImagePath(const std_msgs::StringConstPtr &msg);
+      void processVideoPath(const std_msgs::StringConstPtr &msg);
+      void updateImage(const cv::Mat& image);
+      void clearImage();
 
     protected:
 
@@ -93,13 +99,24 @@ namespace gazebo
       // ROS Stuff
       ros::Subscriber camera_subscriber_;
       ros::Subscriber image_path_subscriber_;
+      ros::Subscriber video_path_subscriber_;
       std::string robot_namespace_;
       std::string topic_name_;
       std::string topic_name_image_path_;
+      std::string topic_name_video_path_;
 
       ros::CallbackQueue queue_;
       boost::thread callback_queue_thread_;
       void QueueThread();
+
+      void VideoThread();
+      boost::thread video_thread_;
+      boost::mutex m_video_;
+      double video_fps_;
+      std::string video_path_;
+      bool new_video_available_;
+      bool stop_video_;
+      bool loop_video_;
 
   };
 
