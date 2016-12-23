@@ -171,6 +171,17 @@ namespace gazebo
       topic_name_image_path_ = sdf->GetElement("topicImagePath")->Get<std::string>();
     }
 
+    topic_name_video_path_ = "set_video_path";
+    if (!sdf->HasElement("topicVideoPath"))
+    {
+      ROS_WARN("GazeboRosVideo Plugin (ns = %s) missing <topicVideoPath>, "
+          "defaults to \"%s\".", robot_namespace_.c_str(), topic_name_video_path_.c_str());
+    }
+    else
+    {
+      topic_name_video_path_ = sdf->GetElement("topicVideoPath")->Get<std::string>();
+    }
+
     int height = 240;
     if (!sdf->HasElement("height")) {
       ROS_WARN("GazeboRosVideo Plugin (ns = %s) missing <height>, "
@@ -189,6 +200,26 @@ namespace gazebo
     else 
     {
       width = sdf->GetElement("width")->Get<int>();
+    }
+
+    video_fps_ = 24;
+    if (!sdf->HasElement("videoFps")) {
+      ROS_WARN("GazeboRosVideo Plugin (ns = %s) missing <videoFps>, "
+          "defaults to %f", robot_namespace_.c_str(), video_fps_);
+    }
+    else
+    {
+      video_fps_ = sdf->GetElement("videoFps")->Get<double>();
+    }
+
+    loop_video_ = true;
+    if (!sdf->HasElement("loopVideo")) {
+      ROS_WARN("GazeboRosVideo Plugin (ns = %s) missing <loopVideo>, "
+          "defaults to %s", robot_namespace_.c_str(), loop_video_ ? "true" : "false");
+    }
+    else
+    {
+      loop_video_ = sdf->GetElement("loopVideo")->Get<bool>();
     }
 
     std::string name = robot_namespace_ + "_visual";
@@ -217,7 +248,7 @@ namespace gazebo
     camera_subscriber_ = 
       rosnode_->subscribe(so);
 
-    // Subscribe to the string topic
+    // Subscribe to the string image topic
     ros::SubscribeOptions so_image_path =
       ros::SubscribeOptions::create<std_msgs::String>(topic_name_image_path_, 1,
           boost::bind(&GazeboRosVideo::processImagePath, this, _1),
@@ -225,12 +256,23 @@ namespace gazebo
     image_path_subscriber_ =
       rosnode_->subscribe(so_image_path);
 
+    // Subscribe to the string video topic
+    ros::SubscribeOptions so_video_path =
+      ros::SubscribeOptions::create<std_msgs::String>(topic_name_video_path_, 1,
+          boost::bind(&GazeboRosVideo::processVideoPath, this, _1),
+          ros::VoidPtr(), &queue_);
+    video_path_subscriber_ =
+      rosnode_->subscribe(so_video_path);
+
     ROS_INFO("GazeboRosVideo (%s, ns = %s) has started!", 
         gazebo_source.c_str(), robot_namespace_.c_str());
     new_image_available_ = false;
 
     this->callback_queue_thread_ = 
       boost::thread(boost::bind(&GazeboRosVideo::QueueThread, this));
+
+    this->video_thread_ =
+      boost::thread(boost::bind(&GazeboRosVideo::VideoThread, this));
 
     this->update_connection_ = 
       event::Events::ConnectPreRender(
@@ -255,22 +297,62 @@ namespace gazebo
     // We get image with alpha channel as it allows memcpy onto ogre texture
     image_ = cv_bridge::toCvCopy(msg, "bgra8");
     new_image_available_ = true;
+    boost::mutex::scoped_lock scoped_lock_video(m_video_);
+    stop_video_ = true;
   }
 
   void GazeboRosVideo::processImagePath(const std_msgs::StringConstPtr &msg)
   {
-    boost::mutex::scoped_lock scoped_lock(m_image_);
-    image_ = boost::make_shared<cv_bridge::CvImage>();
-    cv::Mat image = cv::imread(msg->data, CV_LOAD_IMAGE_COLOR);
-    if (image.data)
+    if (msg->data.empty())
+      clearImage();
+    else
     {
-      cv::cvtColor(image, image_->image, CV_BGR2BGRA, 4);
+      cv::Mat image = cv::imread(msg->data, CV_LOAD_IMAGE_COLOR);
+      updateImage(image);
+    }
+
+    boost::mutex::scoped_lock scoped_lock(m_video_);
+    stop_video_ = true;
+  }
+
+  void GazeboRosVideo::processVideoPath(const std_msgs::StringConstPtr &msg)
+  {
+    boost::mutex::scoped_lock scoped_lock(m_video_);
+    video_path_ = msg->data;
+    if (video_path_.empty())
+    {
+      stop_video_ = true;
+      new_video_available_ = false;
+      clearImage();
     }
     else
     {
+      stop_video_ = false;
+      new_video_available_ = true;
+    }
+  }
+
+  void GazeboRosVideo::updateImage(const cv::Mat& image)
+  {
+    boost::mutex::scoped_lock scoped_lock(m_image_);
+    if (!image_)
+      image_ = boost::make_shared<cv_bridge::CvImage>();
+
+    if (image.empty())
+    {
       image_->image = cv::Mat::zeros(video_visual_->getHeight(), video_visual_->getWidth(), CV_8UC4);
     }
+    else
+    {
+      cv::cvtColor(image, image_->image, CV_BGR2BGRA, 4);
+    }
     new_image_available_ = true;
+  }
+
+  void GazeboRosVideo::clearImage()
+  {
+    cv::Mat empty_image;
+    updateImage(empty_image);
   }
 
   void GazeboRosVideo::QueueThread() 
@@ -279,6 +361,52 @@ namespace gazebo
     while (rosnode_->ok()) 
     {
       queue_.callAvailable(ros::WallDuration(timeout));
+    }
+  }
+
+  void GazeboRosVideo::VideoThread()
+  {
+    ros::WallRate rate(video_fps_ <= 0 ? 24 : video_fps_);
+    cv::VideoCapture cap;
+    cv::Mat frame;
+    while (rosnode_->ok())
+    {
+      m_video_.lock();
+      if (!stop_video_)
+      {
+        if (new_video_available_ && !video_path_.empty())
+        {
+          clearImage();
+          cap.open(video_path_);
+          if (cap.isOpened())
+          {
+            double fps = cap.get(CV_CAP_PROP_FPS);
+            if (video_fps_ <= 0)
+              rate = ros::WallRate(fps);
+          }
+          new_video_available_ = false;
+        }
+
+        if (cap.isOpened())
+        {
+          if (cap.read(frame) && !frame.empty())
+          {
+            updateImage(frame);
+          }
+          else
+          {
+            if (loop_video_)
+              cap.open(video_path_);
+            else
+            {
+              stop_video_ = true;
+              clearImage();
+            }
+          }
+        }
+      }
+      m_video_.unlock();
+      rate.sleep();
     }
   }
 
