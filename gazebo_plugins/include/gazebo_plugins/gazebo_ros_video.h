@@ -73,8 +73,10 @@ namespace gazebo
 
       void Load(rendering::VisualPtr parent, sdf::ElementPtr sdf);
       void processImage(const sensor_msgs::ImageConstPtr &msg);
-      void processImagePath(const std_msgs::StringConstPtr &msg);
-      void processVideoPath(const std_msgs::StringConstPtr &msg);
+      void processImagePath(const std::string &str);
+      void processVideoPath(const std::string &str);
+      void processImagePathMsg(const std_msgs::StringConstPtr &msg);
+      void processVideoPathMsg(const std_msgs::StringConstPtr &msg);
       void updateImage(const cv::Mat& image);
       void clearImage();
 

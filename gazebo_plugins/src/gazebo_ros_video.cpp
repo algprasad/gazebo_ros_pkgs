@@ -296,7 +296,7 @@ namespace gazebo
     // Subscribe to the string image topic
     ros::SubscribeOptions so_image_path =
       ros::SubscribeOptions::create<std_msgs::String>(topic_name_image_path_, 1,
-          boost::bind(&GazeboRosVideo::processImagePath, this, _1),
+          boost::bind(&GazeboRosVideo::processImagePathMsg, this, _1),
           ros::VoidPtr(), &queue_);
     image_path_subscriber_ =
       rosnode_->subscribe(so_image_path);
@@ -304,12 +304,40 @@ namespace gazebo
     // Subscribe to the string video topic
     ros::SubscribeOptions so_video_path =
       ros::SubscribeOptions::create<std_msgs::String>(topic_name_video_path_, 1,
-          boost::bind(&GazeboRosVideo::processVideoPath, this, _1),
+          boost::bind(&GazeboRosVideo::processVideoPathMsg, this, _1),
           ros::VoidPtr(), &queue_);
     video_path_subscriber_ =
       rosnode_->subscribe(so_video_path);
 
     new_image_available_ = false;
+
+    std::string default_video_path;
+    if (sdf->HasElement("defaultVideoPath"))
+    {
+     default_video_path = sdf->GetElement("defaultVideoPath")->Get<std::string>();
+     if (!default_video_path.empty())
+     {
+       default_video_path = common::SystemPaths::Instance()->FindFileURI(default_video_path);
+       if (!default_video_path.empty())
+       {
+         processVideoPath(default_video_path);
+       }
+     }
+    }
+
+    std::string default_image_path;
+    if (sdf->HasElement("defaultImagePath"))
+    {
+     default_image_path = sdf->GetElement("defaultImagePath")->Get<std::string>();
+     if (!default_image_path.empty())
+     {
+       default_image_path = common::SystemPaths::Instance()->FindFileURI(default_image_path);
+       if (!default_image_path.empty())
+       {
+         processImagePath(default_image_path);
+       }
+     }
+    }
 
     callback_queue_thread_ =
       boost::thread(boost::bind(&GazeboRosVideo::QueueThread, this));
@@ -347,13 +375,13 @@ namespace gazebo
     stop_video_ = true;
   }
 
-  void GazeboRosVideo::processImagePath(const std_msgs::StringConstPtr &msg)
+  void GazeboRosVideo::processImagePath(const std::string &str)
   {
-    if (msg->data.empty())
+    if (str.empty())
       clearImage();
     else
     {
-      cv::Mat image = cv::imread(msg->data, CV_LOAD_IMAGE_COLOR);
+      cv::Mat image = cv::imread(str.c_str(), CV_LOAD_IMAGE_COLOR);
       updateImage(image);
     }
 
@@ -361,10 +389,10 @@ namespace gazebo
     stop_video_ = true;
   }
 
-  void GazeboRosVideo::processVideoPath(const std_msgs::StringConstPtr &msg)
+  void GazeboRosVideo::processVideoPath(const std::string &str)
   {
     boost::mutex::scoped_lock scoped_lock(m_video_);
-    video_path_ = msg->data;
+    video_path_ = str;
     if (video_path_.empty())
     {
       stop_video_ = true;
@@ -376,6 +404,16 @@ namespace gazebo
       stop_video_ = false;
       new_video_available_ = true;
     }
+  }
+
+  void GazeboRosVideo::processImagePathMsg(const std_msgs::StringConstPtr &msg)
+  {
+    processImagePath(msg->data);
+  }
+
+  void GazeboRosVideo::processVideoPathMsg(const std_msgs::StringConstPtr &msg)
+  {
+    processVideoPath(msg->data);
   }
 
   void GazeboRosVideo::updateImage(const cv::Mat& image)
