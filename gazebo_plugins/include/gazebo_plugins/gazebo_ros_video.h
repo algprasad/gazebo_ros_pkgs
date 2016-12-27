@@ -52,7 +52,7 @@ namespace gazebo
     public: 
       VideoVisual(
           const std::string &name, rendering::VisualPtr parent, 
-          int height, int width);
+          int height, int width, bool use_double_side_rendering_on_planes = true);
       virtual ~VideoVisual();
       void render(const cv::Mat& image);
       void clearImage();
