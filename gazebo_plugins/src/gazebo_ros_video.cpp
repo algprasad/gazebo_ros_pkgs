@@ -29,7 +29,7 @@ namespace gazebo
 
   VideoVisual::VideoVisual(
       const std::string &name, rendering::VisualPtr parent,
-      int height, int width) :
+      int height, int width, bool use_double_side_rendering_on_planes) :
       rendering::Visual(name, parent), height_(height), width_(width)
   {
 
@@ -49,26 +49,48 @@ namespace gazebo
         name + "__VideoTexture__");
     material->setReceiveShadows(false);
 
-    double factor = 1.0;
-
     Ogre::ManualObject mo(name + "__VideoObject__");
     mo.begin(name + "__VideoMaterial__",
         Ogre::RenderOperation::OT_TRIANGLE_LIST);
 
-    mo.position(-factor / 2, factor / 2, 0.51);
-    mo.textureCoord(0, 0);
+    if (parent->IsPlane())
+    {
+      mo.position(-0.5, -0.5, 0);
+      mo.textureCoord(0, 1);
 
-    mo.position(factor / 2, factor / 2, 0.51);
-    mo.textureCoord(1, 0);
+      mo.position(0.5, -0.5, 0);
+      mo.textureCoord(1, 1);
 
-    mo.position(factor / 2, -factor / 2, 0.51);
-    mo.textureCoord(1, 1);
+      mo.position(0.5, 0.5, 0);
+      mo.textureCoord(1, 0);
 
-    mo.position(-factor / 2, -factor / 2, 0.51);
-    mo.textureCoord(0, 1);
+      mo.position(-0.5, 0.5, 0);
+      mo.textureCoord(0, 0);
 
-    mo.triangle(0, 3, 2);
-    mo.triangle(2, 1, 0);
+      mo.triangle(2, 3, 0);
+      mo.triangle(0, 1, 2);
+
+      if (use_double_side_rendering_on_planes)
+        material->setCullingMode(Ogre::CULL_NONE);
+    }
+    else
+    {
+      mo.position(-0.5, 0.5, 0.52);
+      mo.textureCoord(0, 0);
+
+      mo.position(0.5, 0.5, 0.52);
+      mo.textureCoord(1, 0);
+
+      mo.position(0.5, -0.5, 0.52);
+      mo.textureCoord(1, 1);
+
+      mo.position(-0.5, -0.5, 0.52);
+      mo.textureCoord(0, 1);
+
+      mo.triangle(0, 3, 2);
+      mo.triangle(2, 1, 0);
+    }
+
     mo.end();
 
     mo.convertToMesh(name + "__VideoMesh__");
@@ -241,9 +263,14 @@ namespace gazebo
       loop_video_ = p_sdf->GetElement("loopVideo")->Get<bool>();
     }
 
+    bool use_double_side_rendering_on_planes = true;
+    if (p_sdf->HasElement("useDoubleSideRenderingOnPlanes")) {
+      use_double_side_rendering_on_planes = p_sdf->GetElement("useDoubleSideRenderingOnPlanes")->Get<bool>();
+    }
+
     std::string name = robot_namespace_ + "_visual";
     video_visual_.reset(
-        new VideoVisual(name, parent, height, width));
+        new VideoVisual(name, parent, height, width, use_double_side_rendering_on_planes));
 
     video_visual_->clearImage();
 
