@@ -1,0 +1,45 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="default">
+    <model name="text_model">
+      <static>1</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="text_link">
+        <visual name="text_visual">
+          <transparency>0</transparency>
+          <cast_shadows>false</cast_shadows>
+          <geometry>
+            <plane>
+              <size>1 1</size>
+            </plane>
+          </geometry>
+          <material>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Green</name>
+            </script>
+          </material>
+          <plugin name="text_plugin" filename="libgazebo_ros_text.so">
+            <robotNamespace>text</robotNamespace>
+            <material>Gazebo/Green</material>
+            <textHeight>0.1</textHeight>
+            <textFontName>Arial</textFontName>
+            <textShowOnTop>true</textShowOnTop>
+            <horizontalAlignment>center</horizontalAlignment>
+            <verticalAlignment>above</verticalAlignment>
+            <!-- <defaultText>Default text message</defaultText> -->
+            <topicName>set_message</topicName>
+          </plugin>
+        </visual>
+        <gravity>0</gravity>
+      </link>
+    </model>
+    
+    <gui fullscreen='0'>
+      <camera name='user_camera'>
+        <pose>0 0 1 0 1.5707 0</pose>
+        <view_controller>orbit</view_controller>
+      </camera>
+    </gui>
+  </world>
+</sdf>
