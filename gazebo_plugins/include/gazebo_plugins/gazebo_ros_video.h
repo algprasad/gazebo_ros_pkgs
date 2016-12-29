@@ -119,6 +119,7 @@ namespace gazebo
       bool new_video_available_;
       bool stop_video_;
       bool loop_video_;
+      bool use_wall_rate_;
 
   };
 

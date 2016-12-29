@@ -263,6 +263,11 @@ namespace gazebo
       loop_video_ = p_sdf->GetElement("loopVideo")->Get<bool>();
     }
 
+    use_wall_rate_ = true;
+    if (sdf->HasElement("useWallRate")) {
+      use_wall_rate_ = sdf->GetElement("useWallRate")->Get<bool>();
+    }
+
     bool use_double_side_rendering_on_planes = true;
     if (p_sdf->HasElement("useDoubleSideRenderingOnPlanes")) {
       use_double_side_rendering_on_planes = p_sdf->GetElement("useDoubleSideRenderingOnPlanes")->Get<bool>();
@@ -450,7 +455,8 @@ namespace gazebo
 
   void GazeboRosVideo::VideoThread()
   {
-    ros::WallRate rate(video_fps_ <= 0 ? 24 : video_fps_);
+    ros::WallRate wall_rate(video_fps_ <= 0 ? 24 : video_fps_);
+    ros::Rate simulation_rate(video_fps_ <= 0 ? 24 : video_fps_);
     cv::VideoCapture cap;
     cv::Mat frame;
     while (rosnode_->ok())
@@ -466,7 +472,10 @@ namespace gazebo
           {
             double fps = cap.get(CV_CAP_PROP_FPS);
             if (video_fps_ <= 0)
-              rate = ros::WallRate(fps);
+            {
+              wall_rate = ros::WallRate(fps);
+              simulation_rate = ros::Rate(fps);
+            }
           }
           new_video_available_ = false;
         }
@@ -490,7 +499,10 @@ namespace gazebo
         }
       }
       m_video_.unlock();
-      rate.sleep();
+      if (use_wall_rate_)
+        wall_rate.sleep();
+      else
+        simulation_rate.sleep();
     }
   }
 
