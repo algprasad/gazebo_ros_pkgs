@@ -178,55 +178,89 @@ namespace gazebo
       p_sdf = sdf;
     }
 
-    robot_namespace_ = "";
-    if (!p_sdf->HasElement("robotNamespace"))
+    std::string robot_namespace = "";
+    if (!p_sdf->HasElement("robotNamespace")) 
     {
       ROS_WARN_NAMED("video", "GazeboRosVideo plugin missing <robotNamespace>, "
-          "defaults to \"%s\".", robot_namespace_.c_str());
+          "defaults to \"%s\".", robot_namespace.c_str());
     }
     else
     {
-      robot_namespace_ =
+      robot_namespace =
         p_sdf->GetElement("robotNamespace")->Get<std::string>();
     }
 
-    topic_name_ = "image_raw";
-    if (!p_sdf->HasElement("topicName"))
+    new_image_available_ = false;
+    std::string topic_name_image = "image_raw";
+    if (p_sdf->HasElement("topicName"))
     {
-      ROS_WARN_NAMED("video", "GazeboRosVideo Plugin (ns = %s) missing <topicName>, "
-          "defaults to \"%s\".", robot_namespace_.c_str(), topic_name_.c_str());
-    }
-    else
-    {
-      topic_name_ = p_sdf->GetElement("topicName")->Get<std::string>();
+      topic_name_image = p_sdf->GetElement("topicName")->Get<std::string>();
     }
 
-    topic_name_image_path_ = "set_image_path";
-    if (!p_sdf->HasElement("topicImagePath"))
+    std::string topic_name_image_path = "set_image_path";
+    if (p_sdf->HasElement("topicImagePath"))
     {
-      ROS_WARN_NAMED("video", "GazeboRosVideo Plugin (ns = %s) missing <topicImagePath>, "
-          "defaults to \"%s\".", robot_namespace_.c_str(), topic_name_image_path_.c_str());
-    }
-    else
-    {
-      topic_name_image_path_ = p_sdf->GetElement("topicImagePath")->Get<std::string>();
+      topic_name_image_path = p_sdf->GetElement("topicImagePath")->Get<std::string>();
     }
 
-    topic_name_video_path_ = "set_video_path";
-    if (!p_sdf->HasElement("topicVideoPath"))
+    std::string topic_name_video_path = "set_video_path";
+    if (p_sdf->HasElement("topicVideoPath"))
     {
-      ROS_WARN_NAMED("video", "GazeboRosVideo Plugin (ns = %s) missing <topicVideoPath>, "
-          "defaults to \"%s\".", robot_namespace_.c_str(), topic_name_video_path_.c_str());
+      topic_name_video_path = p_sdf->GetElement("topicVideoPath")->Get<std::string>();
     }
-    else
+
+    video_seek_position_ = -1;
+    std::string topic_name_video_seek = "set_video_seek";
+    if (p_sdf->HasElement("topicVideoSeek"))
     {
-      topic_name_video_path_ = p_sdf->GetElement("topicVideoPath")->Get<std::string>();
+      topic_name_video_seek = p_sdf->GetElement("topicVideoSeek")->Get<std::string>();
+    }
+
+    std::string topic_name_video_paused = "set_video_paused";
+    if (p_sdf->HasElement("topicVideoPaused"))
+    {
+      topic_name_video_paused = p_sdf->GetElement("topicVideoPaused")->Get<std::string>();
+    }
+
+    stop_video_ = false;
+    video_paused_ = false;
+    if (p_sdf->HasElement("videoPaused"))
+    {
+      video_paused_ = p_sdf->GetElement("videoPaused")->Get<bool>();
+    }
+
+    std::string default_video_path;
+    if (p_sdf->HasElement("defaultVideoPath"))
+    {
+      default_video_path = p_sdf->GetElement("defaultVideoPath")->Get<std::string>();
+      if (!default_video_path.empty())
+      {
+        default_video_path = common::SystemPaths::Instance()->FindFileURI(default_video_path);
+        if (!default_video_path.empty())
+        {
+          processVideoPath(default_video_path);
+        }
+      }
+    }
+
+    std::string default_image_path;
+    if (p_sdf->HasElement("defaultImagePath"))
+    {
+      default_image_path = p_sdf->GetElement("defaultImagePath")->Get<std::string>();
+      if (!default_image_path.empty())
+      {
+        default_image_path = common::SystemPaths::Instance()->FindFileURI(default_image_path);
+        if (!default_image_path.empty())
+        {
+         processImagePath(default_image_path);
+        }
+      }
     }
 
     int height = 240;
     if (!p_sdf->HasElement("height")) {
       ROS_WARN_NAMED("video", "GazeboRosVideo Plugin (ns = %s) missing <height>, "
-          "defaults to %i.", robot_namespace_.c_str(), height);
+          "defaults to %i.", robot_namespace.c_str(), height);
     }
     else
     {
@@ -236,7 +270,7 @@ namespace gazebo
     int width = 320;
     if (!p_sdf->HasElement("width")) {
       ROS_WARN_NAMED("video", "GazeboRosVideo Plugin (ns = %s) missing <width>, "
-          "defaults to %i", robot_namespace_.c_str(), width);
+          "defaults to %i", robot_namespace.c_str(), width);
     }
     else
     {
@@ -244,28 +278,18 @@ namespace gazebo
     }
 
     video_fps_ = 24;
-    if (!p_sdf->HasElement("videoFps")) {
-      ROS_WARN_NAMED("video", "GazeboRosVideo Plugin (ns = %s) missing <videoFps>, "
-          "defaults to %f", robot_namespace_.c_str(), video_fps_);
-    }
-    else
-    {
+    if (p_sdf->HasElement("videoFps")) {
       video_fps_ = p_sdf->GetElement("videoFps")->Get<double>();
     }
 
     loop_video_ = true;
-    if (!p_sdf->HasElement("loopVideo")) {
-      ROS_WARN_NAMED("video", "GazeboRosVideo Plugin (ns = %s) missing <loopVideo>, "
-          "defaults to %s", robot_namespace_.c_str(), loop_video_ ? "true" : "false");
-    }
-    else
-    {
+    if (p_sdf->HasElement("loopVideo")) {
       loop_video_ = p_sdf->GetElement("loopVideo")->Get<bool>();
     }
 
     use_wall_rate_ = true;
-    if (sdf->HasElement("useWallRate")) {
-      use_wall_rate_ = sdf->GetElement("useWallRate")->Get<bool>();
+    if (p_sdf->HasElement("useWallRate")) {
+      use_wall_rate_ = p_sdf->GetElement("useWallRate")->Get<bool>();
     }
 
     bool use_double_side_rendering_on_planes = true;
@@ -273,7 +297,7 @@ namespace gazebo
       use_double_side_rendering_on_planes = p_sdf->GetElement("useDoubleSideRenderingOnPlanes")->Get<bool>();
     }
 
-    std::string name = robot_namespace_ + "_visual";
+    std::string name = robot_namespace + "_visual";
     video_visual_.reset(
         new VideoVisual(name, parent, height, width, use_double_side_rendering_on_planes));
 
@@ -289,60 +313,40 @@ namespace gazebo
     }
     std::string gazebo_source =
       (ros::this_node::getName() == "/gazebo_client") ? "gzclient" : "gzserver";
-    rosnode_ = new ros::NodeHandle(robot_namespace_);
+    rosnode_ = new ros::NodeHandle(robot_namespace);
 
-    // Subscribe to the image topic
     ros::SubscribeOptions so =
-      ros::SubscribeOptions::create<sensor_msgs::Image>(topic_name_, 1,
+      ros::SubscribeOptions::create<sensor_msgs::Image>(topic_name_image, 1,
           boost::bind(&GazeboRosVideo::processImage, this, _1),
           ros::VoidPtr(), &queue_);
     camera_subscriber_ = rosnode_->subscribe(so);
 
-    // Subscribe to the string image topic
     ros::SubscribeOptions so_image_path =
-      ros::SubscribeOptions::create<std_msgs::String>(topic_name_image_path_, 1,
+      ros::SubscribeOptions::create<std_msgs::String>(topic_name_image_path, 1,
           boost::bind(&GazeboRosVideo::processImagePathMsg, this, _1),
           ros::VoidPtr(), &queue_);
-    image_path_subscriber_ =
-      rosnode_->subscribe(so_image_path);
+    image_path_subscriber_ = rosnode_->subscribe(so_image_path);
 
-    // Subscribe to the string video topic
     ros::SubscribeOptions so_video_path =
-      ros::SubscribeOptions::create<std_msgs::String>(topic_name_video_path_, 1,
+      ros::SubscribeOptions::create<std_msgs::String>(topic_name_video_path, 1,
           boost::bind(&GazeboRosVideo::processVideoPathMsg, this, _1),
           ros::VoidPtr(), &queue_);
-    video_path_subscriber_ =
-      rosnode_->subscribe(so_video_path);
+    video_path_subscriber_ = rosnode_->subscribe(so_video_path);
 
-    new_image_available_ = false;
+    ros::SubscribeOptions so_video_seek =
+      ros::SubscribeOptions::create<std_msgs::Float64>(topic_name_video_seek, 1,
+          boost::bind(&GazeboRosVideo::processVideoSeekMsg, this, _1),
+          ros::VoidPtr(), &queue_);
+    video_seek_subscriber_ = rosnode_->subscribe(so_video_seek);
 
-    std::string default_video_path;
-    if (sdf->HasElement("defaultVideoPath"))
-    {
-     default_video_path = sdf->GetElement("defaultVideoPath")->Get<std::string>();
-     if (!default_video_path.empty())
-     {
-       default_video_path = common::SystemPaths::Instance()->FindFileURI(default_video_path);
-       if (!default_video_path.empty())
-       {
-         processVideoPath(default_video_path);
-       }
-     }
-    }
+    ros::SubscribeOptions so_video_pause =
+      ros::SubscribeOptions::create<std_msgs::Bool>(topic_name_video_paused, 1,
+          boost::bind(&GazeboRosVideo::processVideoPauseMsg, this, _1),
+          ros::VoidPtr(), &queue_);
+    video_pause_subscriber_ = rosnode_->subscribe(so_video_pause);
 
-    std::string default_image_path;
-    if (sdf->HasElement("defaultImagePath"))
-    {
-     default_image_path = sdf->GetElement("defaultImagePath")->Get<std::string>();
-     if (!default_image_path.empty())
-     {
-       default_image_path = common::SystemPaths::Instance()->FindFileURI(default_image_path);
-       if (!default_image_path.empty())
-       {
-         processImagePath(default_image_path);
-       }
-     }
-    }
+    ROS_INFO("GazeboRosVideo (%s, ns = %s) has started!", 
+        gazebo_source.c_str(), robot_namespace.c_str());
 
     callback_queue_thread_ =
       boost::thread(boost::bind(&GazeboRosVideo::QueueThread, this));
@@ -355,7 +359,7 @@ namespace gazebo
           boost::bind(&GazeboRosVideo::UpdateChild, this));
 
     ROS_INFO_NAMED("video", "GazeboRosVideo (%s, ns = %s) has started",
-        gazebo_source.c_str(), robot_namespace_.c_str());
+        gazebo_source.c_str(), robot_namespace.c_str());
   }
 
   // Update the controller
@@ -411,6 +415,19 @@ namespace gazebo
     }
   }
 
+  void GazeboRosVideo::processVideoSeek(double value)
+  {
+    boost::mutex::scoped_lock scoped_lock(m_video_);
+    video_seek_position_ = value;
+  }
+
+  void GazeboRosVideo::processVideoPause(bool value)
+  {
+    boost::mutex::scoped_lock scoped_lock(m_video_);
+    if (!stop_video_)
+      video_paused_ = value;
+  }
+
   void GazeboRosVideo::processImagePathMsg(const std_msgs::StringConstPtr &msg)
   {
     processImagePath(msg->data);
@@ -419,6 +436,16 @@ namespace gazebo
   void GazeboRosVideo::processVideoPathMsg(const std_msgs::StringConstPtr &msg)
   {
     processVideoPath(msg->data);
+  }
+
+  void GazeboRosVideo::processVideoSeekMsg(const std_msgs::Float64ConstPtr &msg)
+  {
+    processVideoSeek(msg->data);
+  }
+
+  void GazeboRosVideo::processVideoPauseMsg(const std_msgs::BoolConstPtr &msg)
+  {
+    processVideoPause(msg->data);
   }
 
   void GazeboRosVideo::updateImage(const cv::Mat& image)
@@ -482,18 +509,30 @@ namespace gazebo
 
         if (cap.isOpened())
         {
-          if (cap.read(frame) && !frame.empty())
+          bool seek_performed = false;
+          if (video_seek_position_ >= 0 && video_seek_position_ <= 1)
           {
-            updateImage(frame);
+            cap.set(CV_CAP_PROP_POS_FRAMES,
+                    cap.get(CV_CAP_PROP_FRAME_COUNT) * video_seek_position_);
+            video_seek_position_ = -1;
+            seek_performed = true;
           }
-          else
+
+          if (seek_performed || !video_paused_)
           {
-            if (loop_video_)
-              cap.open(video_path_);
+            if (cap.read(frame) && !frame.empty())
+            {
+              updateImage(frame);
+            }
             else
             {
-              stop_video_ = true;
-              clearImage();
+              if (loop_video_)
+                cap.open(video_path_);
+              else
+              {
+                stop_video_ = true;
+                clearImage();
+              }
             }
           }
         }

@@ -37,6 +37,8 @@
 #include <ros/rate.h>
 #include <sensor_msgs/Image.h>
 #include <std_msgs/String.h>
+#include <std_msgs/Float64.h>
+#include <std_msgs/Bool.h>
 
 #include <gazebo/common/Events.hh>
 #include <gazebo/common/Plugin.hh>
@@ -75,8 +77,12 @@ namespace gazebo
       void processImage(const sensor_msgs::ImageConstPtr &msg);
       void processImagePath(const std::string &str);
       void processVideoPath(const std::string &str);
+      void processVideoSeek(double value);
+      void processVideoPause(bool pause_video);
       void processImagePathMsg(const std_msgs::StringConstPtr &msg);
       void processVideoPathMsg(const std_msgs::StringConstPtr &msg);
+      void processVideoSeekMsg(const std_msgs::Float64ConstPtr &msg);
+      void processVideoPauseMsg(const std_msgs::BoolConstPtr &msg);
       void updateImage(const cv::Mat& image);
       void clearImage();
 
@@ -102,10 +108,8 @@ namespace gazebo
       ros::Subscriber camera_subscriber_;
       ros::Subscriber image_path_subscriber_;
       ros::Subscriber video_path_subscriber_;
-      std::string robot_namespace_;
-      std::string topic_name_;
-      std::string topic_name_image_path_;
-      std::string topic_name_video_path_;
+      ros::Subscriber video_seek_subscriber_;
+      ros::Subscriber video_pause_subscriber_;
 
       ros::CallbackQueue queue_;
       boost::thread callback_queue_thread_;
@@ -120,6 +124,8 @@ namespace gazebo
       bool stop_video_;
       bool loop_video_;
       bool use_wall_rate_;
+      double video_seek_position_;
+      bool video_paused_;
 
   };
 
