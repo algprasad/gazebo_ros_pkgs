@@ -126,6 +126,9 @@ namespace gazebo
       bool use_wall_rate_;
       double video_seek_position_;
       bool video_paused_;
+      bool buffer_all_frames_for_fast_seek_;
+      size_t current_buffered_frame_;
+      std::vector<cv::Mat> video_frames_;
 
   };
 
