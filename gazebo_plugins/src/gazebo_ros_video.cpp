@@ -197,6 +197,13 @@ namespace gazebo
       topic_name_video_seek = sdf->GetElement("topicVideoSeek")->Get<std::string>();
     }
 
+    buffer_all_frames_for_fast_seek_ = false;
+    current_buffered_frame_ = 0;
+    if (sdf->HasElement("bufferAllFramesForFastSeek"))
+    {
+      buffer_all_frames_for_fast_seek_ = sdf->GetElement("bufferAllFramesForFastSeek")->Get<bool>();
+    }
+
     std::string topic_name_video_paused = "set_video_paused";
     if (sdf->HasElement("topicVideoPaused"))
     {
@@ -483,11 +490,56 @@ namespace gazebo
             }
           }
           new_video_available_ = false;
+          if (buffer_all_frames_for_fast_seek_)
+          {
+            video_frames_.clear();
+            current_buffered_frame_ = 0;
+            if (cap.isOpened())
+            {
+              cv::Mat new_frame;
+              while (cap.read(new_frame))
+              {
+                if (!new_frame.empty())
+                {
+                  cv::Mat resized_frame;
+                  cv::resize(new_frame, resized_frame, cv::Size(video_visual_->getWidth(), video_visual_->getHeight()));
+                  video_frames_.push_back(resized_frame);
+                }
+                new_frame.release();
+              }
+            }
+          }
         }
 
-        if (cap.isOpened())
+        bool seek_performed = false;
+
+        if (buffer_all_frames_for_fast_seek_ && !video_frames_.empty())
         {
-          bool seek_performed = false;
+          if (video_seek_position_ >= 0 && video_seek_position_ <= 1)
+          {
+            current_buffered_frame_ = (video_frames_.size() - 1) * video_seek_position_;
+            video_seek_position_ = -1;
+            seek_performed = true;
+          }
+
+          if (current_buffered_frame_ >= video_frames_.size())
+          {
+            current_buffered_frame_ = 0;
+            if (!loop_video_)
+            {
+              stop_video_ = true;
+              clearImage();
+              video_frames_.clear();
+            }
+          }
+
+          if (seek_performed || !video_paused_)
+          {
+            updateImage(video_frames_[current_buffered_frame_++]);
+          }
+        }
+        else if (cap.isOpened())
+        {
           if (video_seek_position_ >= 0 && video_seek_position_ <= 1)
           {
             cap.set(CV_CAP_PROP_POS_FRAMES,
