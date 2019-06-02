@@ -705,6 +705,9 @@ void GazeboRosCameraUtils::Init()
     }
   }
 
+  this->camera_->UpdateCameraIntrinsics(this->focal_length_x_, this->focal_length_y_,
+                                        this->cx_, this->cy_, this->axis_skew_);
+
   // fill CameraInfo
   sensor_msgs::CameraInfo camera_info_msg;
   FillCameraInfo(camera_info_msg);
