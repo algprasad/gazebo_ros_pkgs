@@ -41,6 +41,7 @@ else()
 endif()
 
 find_package(Boost REQUIRED COMPONENTS thread)
+find_package(OpenCV 3 REQUIRED)
 
 execute_process(COMMAND
   pkg-config --variable=plugindir OGRE
@@ -138,6 +139,7 @@ catkin_package(
   rosconsole
   camera_info_manager
   std_msgs
+  cv_bridge
 )
 add_dependencies(${PROJECT_NAME}_gencfg ${catkin_EXPORTED_TARGETS})
 
@@ -271,7 +273,7 @@ add_library(gazebo_ros_skid_steer_drive src/gazebo_ros_skid_steer_drive.cpp)
 target_link_libraries(gazebo_ros_skid_steer_drive ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 add_library(gazebo_ros_video src/gazebo_ros_video.cpp)
-target_link_libraries(gazebo_ros_video ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${OGRE_LIBRARIES})
+target_link_libraries(gazebo_ros_video ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${OGRE_LIBRARIES} ${OpenCV_LIBRARIES})
 
 add_library(gazebo_ros_text src/gazebo_ros_text.cpp)
 target_link_libraries(gazebo_ros_text ${GAZEBO_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${OGRE_LIBRARIES})
